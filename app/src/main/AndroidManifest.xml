@@ -19,6 +19,10 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".update.InstallResultReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>

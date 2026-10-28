@@ -3,7 +3,6 @@ package com.intuitivesolns.bndraft
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -19,6 +18,7 @@ import kotlin.concurrent.thread
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var checkButton: Button
+    private var checkOnResume = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,13 +50,32 @@ class MainActivity : Activity() {
             addView(checkButton)
         })
 
-        if (savedInstanceState == null) checkForUpdate(manual = false)
-        handleInstallStatus(intent)
+        checkOnResume = savedInstanceState == null
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleInstallStatus(intent)
+    override fun onResume() {
+        super.onResume()
+        Updater.failureListener = { runOnUiThread { showPendingFailure() } }
+        // A failed install takes priority over offering the same update again.
+        if (!showPendingFailure() && checkOnResume) checkForUpdate(manual = false)
+        checkOnResume = false
+    }
+
+    override fun onPause() {
+        Updater.failureListener = null
+        super.onPause()
+    }
+
+    private fun showPendingFailure(): Boolean {
+        val failure = Updater.takeFailure(this) ?: return false
+        checkButton.isEnabled = true
+        status.text = "Install failed: $failure"
+        AlertDialog.Builder(this)
+            .setTitle("Update not installed")
+            .setMessage(failure)
+            .setPositiveButton("OK", null)
+            .show()
+        return true
     }
 
     private fun checkForUpdate(manual: Boolean) {
@@ -66,7 +85,7 @@ class MainActivity : Activity() {
             val result = runCatching { Updater.checkForUpdate() }
             runOnUiThread {
                 checkButton.isEnabled = true
-                status.text = ""
+                if (manual) status.text = ""
                 result.fold(
                     onSuccess = { release ->
                         if (release != null) offerUpdate(release)
@@ -101,28 +120,12 @@ class MainActivity : Activity() {
             runCatching {
                 val apk = Updater.download(this) { pct -> runOnUiThread { status.text = "Downloading… $pct%" } }
                 runOnUiThread { status.text = "Installing…" }
-                Updater.install(this, apk, MainActivity::class.java)
+                Updater.install(this, apk)
             }.onFailure {
                 runOnUiThread {
                     checkButton.isEnabled = true
                     status.text = "Update failed: ${it.message}"
                 }
-            }
-        }
-    }
-
-    private fun handleInstallStatus(intent: Intent?) {
-        if (intent?.action != Updater.ACTION_INSTALL_STATUS) return
-        when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
-            PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                @Suppress("DEPRECATION")
-                val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
-                if (confirm != null) startActivity(confirm)
-            }
-            PackageInstaller.STATUS_SUCCESS -> status.text = "Updated"
-            else -> {
-                checkButton.isEnabled = true
-                status.text = "Install failed: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}"
             }
         }
     }

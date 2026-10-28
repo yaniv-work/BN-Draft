@@ -19,8 +19,6 @@ data class Release(val versionCode: Int, val versionName: String, val notes: Str
  * All calls block; run them off the main thread.
  */
 object Updater {
-    const val ACTION_INSTALL_STATUS = "com.intuitivesolns.bndraft.INSTALL_STATUS"
-
     private fun open(path: String): HttpURLConnection =
         (URL("${BuildConfig.UPDATE_BASE_URL}/$path").openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
@@ -71,11 +69,29 @@ object Updater {
         return target
     }
 
+    /** Install failure reported by [InstallResultReceiver], kept until the UI shows it. */
+    fun reportFailure(context: Context, message: String) {
+        prefs(context).edit().putString(KEY_FAILURE, message).apply()
+        failureListener?.invoke()
+    }
+
+    /** Returns and clears the pending install failure, if any. */
+    fun takeFailure(context: Context): String? {
+        val p = prefs(context)
+        return p.getString(KEY_FAILURE, null)?.also { p.edit().remove(KEY_FAILURE).apply() }
+    }
+
+    /** Set by the visible activity so it can show failures immediately. */
+    @Volatile var failureListener: (() -> Unit)? = null
+
+    private const val KEY_FAILURE = "install_failure"
+    private fun prefs(context: Context) = context.getSharedPreferences("updater", Context.MODE_PRIVATE)
+
     /**
      * Hands the APK to PackageInstaller. The result (including the "Update?" confirmation
-     * Android asks for) comes back to [statusTarget] as an ACTION_INSTALL_STATUS intent.
+     * Android asks for) comes back to [InstallResultReceiver].
      */
-    fun install(context: Context, apk: File, statusTarget: Class<*>) {
+    fun install(context: Context, apk: File) {
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         val sessionId = installer.createSession(params)
@@ -84,13 +100,11 @@ object Updater {
                 apk.inputStream().use { it.copyTo(out) }
                 session.fsync(out)
             }
-            val intent = Intent(context, statusTarget)
-                .setAction(ACTION_INSTALL_STATUS)
-                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val intent = Intent(context, InstallResultReceiver::class.java)
             // Mutable: the installer adds the status extras to this intent.
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-            val pending = PendingIntent.getActivity(context, sessionId, intent, flags)
+            val pending = PendingIntent.getBroadcast(context, sessionId, intent, flags)
             session.commit(pending.intentSender)
         }
     }
