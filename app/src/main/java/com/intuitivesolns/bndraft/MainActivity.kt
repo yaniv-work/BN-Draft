@@ -51,8 +51,8 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         Updater.failureListener = { runOnUiThread { showPendingFailure() } }
-        // A failed install takes priority over offering the same update again.
-        if (!showPendingFailure() && checkOnResume) checkForUpdate(manual = false)
+        // A failed or still-landing install takes priority over offering the same update again.
+        if (!showPendingFailure() && !showInstalling() && checkOnResume) checkForUpdate(manual = false)
         checkOnResume = false
     }
 
@@ -73,7 +73,14 @@ class MainActivity : Activity() {
         return true
     }
 
+    private fun showInstalling(): Boolean {
+        val name = Updater.installingVersion(this) ?: return false
+        status.text = "Finishing update to v$name…\nReopen the app once the scan is done."
+        return true
+    }
+
     private fun checkForUpdate(manual: Boolean) {
+        if (showInstalling()) return
         checkButton.isEnabled = false
         if (manual) status.text = "Checking…"
         thread {
@@ -96,12 +103,12 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Update to v${release.versionName}?")
             .setMessage(release.notes.ifBlank { "A new version is available." })
-            .setPositiveButton("Update") { _, _ -> startUpdate() }
+            .setPositiveButton("Update") { _, _ -> startUpdate(release) }
             .setNegativeButton("Later", null)
             .show()
     }
 
-    private fun startUpdate() {
+    private fun startUpdate(release: Release) {
         // One-time grant: "Install unknown apps" for BN-Draft.
         if (!packageManager.canRequestPackageInstalls()) {
             Toast.makeText(this, "Allow BN-Draft to install updates, then tap Check again", Toast.LENGTH_LONG).show()
@@ -116,6 +123,7 @@ class MainActivity : Activity() {
                 val apk = Updater.download(this) { pct -> runOnUiThread { status.text = "Downloading… $pct%" } }
                 runOnUiThread { status.text = "Installing…" }
                 Updater.install(this, apk)
+                Updater.markInstalling(this, release)
             }.onFailure {
                 runOnUiThread {
                     checkButton.isEnabled = true

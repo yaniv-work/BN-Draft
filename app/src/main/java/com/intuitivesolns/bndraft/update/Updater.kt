@@ -71,8 +71,28 @@ object Updater {
 
     /** Install failure reported by [InstallResultReceiver], kept until the UI shows it. */
     fun reportFailure(context: Context, message: String) {
-        prefs(context).edit().putString(KEY_FAILURE, message).apply()
+        prefs(context).edit().putString(KEY_FAILURE, message).remove(KEY_INSTALLING).apply()
         failureListener?.invoke()
+    }
+
+    /**
+     * Remembers that [release] has been handed to the installer. The install can take a
+     * while to land (security scans), and the old version may be reopened meanwhile.
+     */
+    fun markInstalling(context: Context, release: Release) {
+        prefs(context).edit()
+            .putString(KEY_INSTALLING, "${release.versionCode}|${release.versionName}|${System.currentTimeMillis()}")
+            .apply()
+    }
+
+    /** The versionName still being installed, or null once it landed, failed or went stale. */
+    fun installingVersion(context: Context): String? {
+        val p = prefs(context)
+        val (code, name, startedAt) = p.getString(KEY_INSTALLING, null)?.split("|") ?: return null
+        val pending = code.toInt() > BuildConfig.VERSION_CODE &&
+            System.currentTimeMillis() - startedAt.toLong() < INSTALL_TIMEOUT_MS
+        if (!pending) p.edit().remove(KEY_INSTALLING).apply()
+        return name.takeIf { pending }
     }
 
     /** Returns and clears the pending install failure, if any. */
@@ -85,6 +105,8 @@ object Updater {
     @Volatile var failureListener: (() -> Unit)? = null
 
     private const val KEY_FAILURE = "install_failure"
+    private const val KEY_INSTALLING = "installing"
+    private const val INSTALL_TIMEOUT_MS = 10 * 60 * 1000L
     private fun prefs(context: Context) = context.getSharedPreferences("updater", Context.MODE_PRIVATE)
 
     /**
