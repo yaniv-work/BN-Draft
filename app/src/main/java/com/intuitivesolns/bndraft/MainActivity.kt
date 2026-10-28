@@ -28,10 +28,6 @@ class MainActivity : Activity() {
             textSize = 32f
             gravity = Gravity.CENTER
         }
-        val build = TextView(this).apply {
-            text = "build ${BuildConfig.VERSION_CODE}"
-            gravity = Gravity.CENTER
-        }
         status = TextView(this).apply {
             gravity = Gravity.CENTER
             setPadding(0, 48, 0, 24)
@@ -45,7 +41,6 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(48, 48, 48, 48)
             addView(version)
-            addView(build)
             addView(status)
             addView(checkButton)
         })
