@@ -35,9 +35,10 @@ $name = $props.versionName
 if (-not $NoBump) {
     $parts = $name.Split(".") | ForEach-Object { [int]$_ }
     switch ($Bump) {
-        "major" { $parts = @($parts[0] + 1, 0, 0) }
-        "minor" { $parts = @($parts[0], $parts[1] + 1, 0) }
-        "patch" { $parts = @($parts[0], $parts[1], $parts[2] + 1) }
+        # Parenthesize the "+ 1": in PowerShell the comma binds tighter than +.
+        "major" { $parts = @(($parts[0] + 1), 0, 0) }
+        "minor" { $parts = @($parts[0], ($parts[1] + 1), 0) }
+        "patch" { $parts = @($parts[0], $parts[1], ($parts[2] + 1)) }
     }
     $code += 1
     $name = $parts -join "."
