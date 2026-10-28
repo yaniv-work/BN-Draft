@@ -1,0 +1,13 @@
+.gradle/
+.idea/
+.kotlin/
+build/
+*.iml
+local.properties
+
+# Signing key: never commit. Back it up somewhere safe.
+keystore/
+keystore.properties
+
+# Release output
+dist/
